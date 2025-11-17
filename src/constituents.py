@@ -78,22 +78,44 @@ class ConstituentsManager:
             tables = pd.read_html(response.text)
             df = tables[0]
 
-            # Rename columns to standard format
-            df = df.rename(columns={
-                'Symbol': 'Ticker',
-                'Security': 'Name',
-                'GICS Sector': 'Sector',
-                'GICS Sub-Industry': 'Industry'
-            })
+            # Handle multi-level columns if present
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(-1)
 
-            # Select relevant columns
-            df = df[['Ticker', 'Name', 'Sector', 'Industry']]
-            df['Index'] = 'S&P 500'
+            logger.info(f"S&P 500 table columns: {list(df.columns)}")
 
-            save_cache(df, cache_path, format="csv")
-            logger.info(f"Fetched {len(df)} S&P 500 constituents")
+            # Try to find the right columns flexibly
+            ticker_col = None
+            name_col = None
+            sector_col = None
+            industry_col = None
 
-            return df
+            for col in df.columns:
+                col_lower = str(col).lower()
+                if 'symbol' in col_lower or 'ticker' in col_lower:
+                    ticker_col = col
+                elif 'security' in col_lower or 'company' in col_lower or (col_lower == 'name' or 'name' in col_lower):
+                    name_col = col
+                elif 'sector' in col_lower and 'sub' not in col_lower:
+                    sector_col = col
+                elif ('sub' in col_lower and 'industry' in col_lower) or col_lower == 'industry':
+                    industry_col = col
+
+            if not ticker_col:
+                raise ValueError(f"Could not find ticker column in {list(df.columns)}")
+
+            # Build result dataframe with available columns
+            result = pd.DataFrame()
+            result['Ticker'] = df[ticker_col]
+            result['Name'] = df[name_col] if name_col else ''
+            result['Sector'] = df[sector_col] if sector_col else ''
+            result['Industry'] = df[industry_col] if industry_col else ''
+            result['Index'] = 'S&P 500'
+
+            save_cache(result, cache_path, format="csv")
+            logger.info(f"Fetched {len(result)} S&P 500 constituents")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching S&P 500 constituents: {e}")
@@ -124,39 +146,60 @@ class ConstituentsManager:
             response.raise_for_status()
 
             tables = pd.read_html(response.text)
-            df = tables[3]  # NASDAQ-100 table is usually the 4th table
 
-            # Rename columns
-            df = df.rename(columns={
-                'Ticker': 'Ticker',
-                'Company': 'Name',
-                'GICS Sector': 'Sector',
-                'GICS Sub-Industry': 'Industry'
-            })
+            # Try different table indices to find the constituents table
+            df = None
+            for table_idx in [3, 4, 5]:
+                if table_idx < len(tables):
+                    temp_df = tables[table_idx]
+                    # Handle multi-level columns if present
+                    if isinstance(temp_df.columns, pd.MultiIndex):
+                        temp_df.columns = temp_df.columns.get_level_values(-1)
 
-            # Handle different column names
-            if 'Company' not in df.columns and 'Security' in df.columns:
-                df = df.rename(columns={'Security': 'Name'})
+                    # Check if this looks like a constituents table (has ticker/company column)
+                    col_str = ' '.join(str(col).lower() for col in temp_df.columns)
+                    if ('ticker' in col_str or 'symbol' in col_str) and ('company' in col_str or 'name' in col_str):
+                        df = temp_df
+                        logger.info(f"Found NASDAQ-100 constituents in table {table_idx}")
+                        break
 
-            # Select relevant columns
-            cols = ['Ticker', 'Name']
-            if 'Sector' in df.columns:
-                cols.append('Sector')
-            else:
-                df['Sector'] = 'Technology'  # Default for NASDAQ
+            if df is None:
+                raise ValueError("Could not find NASDAQ-100 constituents table")
 
-            if 'Industry' in df.columns:
-                cols.append('Industry')
-            else:
-                df['Industry'] = 'Unknown'
+            logger.info(f"NASDAQ-100 table columns: {list(df.columns)}")
 
-            df = df[cols]
-            df['Index'] = 'NASDAQ-100'
+            # Try to find the right columns flexibly
+            ticker_col = None
+            name_col = None
+            sector_col = None
+            industry_col = None
 
-            save_cache(df, cache_path, format="csv")
-            logger.info(f"Fetched {len(df)} NASDAQ-100 constituents")
+            for col in df.columns:
+                col_lower = str(col).lower()
+                if 'symbol' in col_lower or 'ticker' in col_lower:
+                    ticker_col = col
+                elif 'company' in col_lower or 'security' in col_lower or col_lower == 'name':
+                    name_col = col
+                elif 'sector' in col_lower and 'sub' not in col_lower:
+                    sector_col = col
+                elif ('sub' in col_lower and 'industry' in col_lower) or col_lower == 'industry':
+                    industry_col = col
 
-            return df
+            if not ticker_col:
+                raise ValueError(f"Could not find ticker column in {list(df.columns)}")
+
+            # Build result dataframe with available columns
+            result = pd.DataFrame()
+            result['Ticker'] = df[ticker_col]
+            result['Name'] = df[name_col] if name_col else ''
+            result['Sector'] = df[sector_col] if sector_col else 'Technology'  # Default for NASDAQ
+            result['Industry'] = df[industry_col] if industry_col else ''
+            result['Index'] = 'NASDAQ-100'
+
+            save_cache(result, cache_path, format="csv")
+            logger.info(f"Fetched {len(result)} NASDAQ-100 constituents")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching NASDAQ-100 constituents: {e}")
@@ -187,44 +230,63 @@ class ConstituentsManager:
             response.raise_for_status()
 
             tables = pd.read_html(response.text)
-            df = tables[3]  # Constituents table
 
-            # Rename columns
-            df = df.rename(columns={
-                'Ticker': 'Ticker',
-                'Company': 'Name',
-                'FTSE Industry Classification Benchmark sector[10]': 'Sector'
-            })
+            # Try different table indices to find the constituents table
+            df = None
+            for table_idx in [2, 3, 4]:
+                if table_idx < len(tables):
+                    temp_df = tables[table_idx]
+                    # Handle multi-level columns if present
+                    if isinstance(temp_df.columns, pd.MultiIndex):
+                        temp_df.columns = temp_df.columns.get_level_values(-1)
 
-            # Handle different column formats
-            if 'Company' not in df.columns and 'Name' not in df.columns:
-                # Try to find the right column
-                for col in df.columns:
-                    if 'company' in col.lower() or 'name' in col.lower():
-                        df = df.rename(columns={col: 'Name'})
-                        break
+                    # Check if this looks like a constituents table
+                    if len(temp_df) > 50:  # FTSE 100 should have ~100 rows
+                        col_str = ' '.join(str(col).lower() for col in temp_df.columns)
+                        if ('ticker' in col_str or 'epic' in col_str) and ('company' in col_str or 'name' in col_str):
+                            df = temp_df
+                            logger.info(f"Found FTSE 100 constituents in table {table_idx}")
+                            break
 
-            # Add .L suffix for London Stock Exchange
-            if 'Ticker' in df.columns:
-                df['Ticker'] = df['Ticker'].astype(str) + '.L'
+            if df is None:
+                raise ValueError("Could not find FTSE 100 constituents table")
 
-            # Select relevant columns
-            cols = ['Ticker', 'Name']
-            if 'Sector' in df.columns:
-                cols.append('Sector')
-            else:
-                df['Sector'] = 'Unknown'
+            logger.info(f"FTSE 100 table columns: {list(df.columns)}")
 
-            df['Industry'] = 'Unknown'
-            cols.extend(['Sector', 'Industry'])
+            # Try to find the right columns flexibly
+            ticker_col = None
+            name_col = None
+            sector_col = None
 
-            df = df[cols]
-            df['Index'] = 'FTSE 100'
+            for col in df.columns:
+                col_lower = str(col).lower()
+                if 'ticker' in col_lower or 'epic' in col_lower or 'symbol' in col_lower:
+                    ticker_col = col
+                elif 'company' in col_lower or (col_lower == 'name' or 'name' in col_lower):
+                    name_col = col
+                elif 'sector' in col_lower:
+                    sector_col = col
 
-            save_cache(df, cache_path, format="csv")
-            logger.info(f"Fetched {len(df)} FTSE 100 constituents")
+            if not ticker_col:
+                raise ValueError(f"Could not find ticker column in {list(df.columns)}")
 
-            return df
+            # Build result dataframe with available columns
+            result = pd.DataFrame()
+
+            # Add .L suffix for London Stock Exchange tickers
+            tickers = df[ticker_col].astype(str)
+            # Only add .L if not already present
+            result['Ticker'] = tickers.apply(lambda x: x if x.endswith('.L') else f"{x}.L")
+
+            result['Name'] = df[name_col] if name_col else ''
+            result['Sector'] = df[sector_col] if sector_col else ''
+            result['Industry'] = ''  # FTSE typically doesn't have industry level detail
+            result['Index'] = 'FTSE 100'
+
+            save_cache(result, cache_path, format="csv")
+            logger.info(f"Fetched {len(result)} FTSE 100 constituents")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching FTSE 100 constituents: {e}")
@@ -255,40 +317,63 @@ class ConstituentsManager:
             response.raise_for_status()
 
             tables = pd.read_html(response.text)
-            df = tables[3]  # Constituents table
 
-            # Similar processing as FTSE 100
-            df = df.rename(columns={
-                'Ticker': 'Ticker',
-                'Company': 'Name',
-                'FTSE Industry Classification Benchmark sector': 'Sector'
-            })
+            # Try different table indices to find the constituents table
+            df = None
+            for table_idx in [2, 3, 4]:
+                if table_idx < len(tables):
+                    temp_df = tables[table_idx]
+                    # Handle multi-level columns if present
+                    if isinstance(temp_df.columns, pd.MultiIndex):
+                        temp_df.columns = temp_df.columns.get_level_values(-1)
 
-            if 'Company' not in df.columns and 'Name' not in df.columns:
-                for col in df.columns:
-                    if 'company' in col.lower() or 'name' in col.lower():
-                        df = df.rename(columns={col: 'Name'})
-                        break
+                    # Check if this looks like a constituents table
+                    if len(temp_df) > 100:  # FTSE 250 should have ~250 rows
+                        col_str = ' '.join(str(col).lower() for col in temp_df.columns)
+                        if ('ticker' in col_str or 'epic' in col_str) and ('company' in col_str or 'name' in col_str):
+                            df = temp_df
+                            logger.info(f"Found FTSE 250 constituents in table {table_idx}")
+                            break
 
-            if 'Ticker' in df.columns:
-                df['Ticker'] = df['Ticker'].astype(str) + '.L'
+            if df is None:
+                raise ValueError("Could not find FTSE 250 constituents table")
 
-            cols = ['Ticker', 'Name']
-            if 'Sector' in df.columns:
-                cols.append('Sector')
-            else:
-                df['Sector'] = 'Unknown'
+            logger.info(f"FTSE 250 table columns: {list(df.columns)}")
 
-            df['Industry'] = 'Unknown'
-            cols.extend(['Sector', 'Industry'])
+            # Try to find the right columns flexibly
+            ticker_col = None
+            name_col = None
+            sector_col = None
 
-            df = df[cols]
-            df['Index'] = 'FTSE 250'
+            for col in df.columns:
+                col_lower = str(col).lower()
+                if 'ticker' in col_lower or 'epic' in col_lower or 'symbol' in col_lower:
+                    ticker_col = col
+                elif 'company' in col_lower or (col_lower == 'name' or 'name' in col_lower):
+                    name_col = col
+                elif 'sector' in col_lower:
+                    sector_col = col
 
-            save_cache(df, cache_path, format="csv")
-            logger.info(f"Fetched {len(df)} FTSE 250 constituents")
+            if not ticker_col:
+                raise ValueError(f"Could not find ticker column in {list(df.columns)}")
 
-            return df
+            # Build result dataframe with available columns
+            result = pd.DataFrame()
+
+            # Add .L suffix for London Stock Exchange tickers
+            tickers = df[ticker_col].astype(str)
+            # Only add .L if not already present
+            result['Ticker'] = tickers.apply(lambda x: x if x.endswith('.L') else f"{x}.L")
+
+            result['Name'] = df[name_col] if name_col else ''
+            result['Sector'] = df[sector_col] if sector_col else ''
+            result['Industry'] = ''  # FTSE typically doesn't have industry level detail
+            result['Index'] = 'FTSE 250'
+
+            save_cache(result, cache_path, format="csv")
+            logger.info(f"Fetched {len(result)} FTSE 250 constituents")
+
+            return result
 
         except Exception as e:
             logger.error(f"Error fetching FTSE 250 constituents: {e}")
