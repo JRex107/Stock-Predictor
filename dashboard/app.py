@@ -148,11 +148,13 @@ def render_sidebar():
         st.sidebar.warning("⚠️ No NewsAPI key configured. Sentiment analysis disabled.")
 
     # Existing portfolio
-    st.sidebar.markdown("### Existing Portfolio (Optional)")
+    st.sidebar.markdown("### Analyze Specific Stocks (Optional)")
+    st.sidebar.caption("Leave empty to analyze all stocks from selected indices, or enter specific tickers to analyze only those.")
     portfolio_input = st.sidebar.text_area(
         "Enter tickers (one per line):",
         placeholder="AAPL\nMSFT\nGOOGL",
-        height=100
+        height=100,
+        key="portfolio_input"
     )
     existing_portfolio = [t.strip().upper() for t in portfolio_input.split('\n') if t.strip()]
 
@@ -477,8 +479,12 @@ def main():
                     )
 
                     # Run analysis
+                    # If user provided existing portfolio, only analyze those stocks
+                    # Otherwise, analyze top N stocks from selected indices
+                    tickers_to_analyze = config['existing_portfolio'] if config['existing_portfolio'] else []
+
                     analysis_df = engine.analyze_portfolio(
-                        tickers=[],
+                        tickers=tickers_to_analyze,
                         indices=config['indices'],
                         top_n=config['top_n'],
                         show_progress=True
