@@ -104,9 +104,9 @@ def render_sidebar():
     # Market selection
     st.sidebar.markdown("### Markets to Analyze")
     indices = []
-    if st.sidebar.checkbox("S&P 500", value=True):
+    if st.sidebar.checkbox("S&P 500", value=True, key="cb_sp500"):
         indices.append('SP500')
-    if st.sidebar.checkbox("NASDAQ-100", value=True):
+    if st.sidebar.checkbox("NASDAQ-100", value=True, key="cb_nasdaq100"):
         indices.append('NASDAQ100')
 
     ftse_option = st.sidebar.selectbox(
