@@ -42,6 +42,12 @@ class ConstituentsManager:
         self.cache_duration = cache_duration_hours
         self.cache_dir = CONSTITUENTS_DIR
         self.data_loader = DataLoader()
+
+        # User-Agent header to avoid Wikipedia 403 errors
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+
         logger.info("ConstituentsManager initialized")
 
     def get_sp500_constituents(self, use_cache: bool = True) -> pd.DataFrame:
@@ -64,8 +70,12 @@ class ConstituentsManager:
             logger.info("Fetching S&P 500 constituents from Wikipedia")
             url = INDICES["SP500"]["constituents_url"]
 
+            # Fetch with proper headers to avoid 403 errors
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+
             # Read the first table from Wikipedia
-            tables = pd.read_html(url)
+            tables = pd.read_html(response.text)
             df = tables[0]
 
             # Rename columns to standard format
@@ -109,7 +119,11 @@ class ConstituentsManager:
             logger.info("Fetching NASDAQ-100 constituents from Wikipedia")
             url = INDICES["NASDAQ100"]["constituents_url"]
 
-            tables = pd.read_html(url)
+            # Fetch with proper headers to avoid 403 errors
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+
+            tables = pd.read_html(response.text)
             df = tables[3]  # NASDAQ-100 table is usually the 4th table
 
             # Rename columns
@@ -168,7 +182,11 @@ class ConstituentsManager:
             logger.info("Fetching FTSE 100 constituents from Wikipedia")
             url = INDICES["FTSE100"]["constituents_url"]
 
-            tables = pd.read_html(url)
+            # Fetch with proper headers to avoid 403 errors
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+
+            tables = pd.read_html(response.text)
             df = tables[3]  # Constituents table
 
             # Rename columns
@@ -232,7 +250,11 @@ class ConstituentsManager:
             logger.info("Fetching FTSE 250 constituents from Wikipedia")
             url = INDICES["FTSE250"]["constituents_url"]
 
-            tables = pd.read_html(url)
+            # Fetch with proper headers to avoid 403 errors
+            response = requests.get(url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+
+            tables = pd.read_html(response.text)
             df = tables[3]  # Constituents table
 
             # Similar processing as FTSE 100
