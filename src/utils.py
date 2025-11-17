@@ -76,7 +76,8 @@ def save_cache(data: Any, cache_path: Path, format: str = "pickle") -> None:
         with open(cache_path, 'w') as f:
             json.dump(data, f, indent=2)
     elif format == "csv" and isinstance(data, pd.DataFrame):
-        data.to_csv(cache_path, index=False)
+        # Save with index to preserve datetime index for stock price data
+        data.to_csv(cache_path, index=True)
     else:
         raise ValueError(f"Unsupported format: {format}")
 
@@ -103,7 +104,8 @@ def load_cache(cache_path: Path, format: str = "pickle") -> Optional[Any]:
             with open(cache_path, 'r') as f:
                 return json.load(f)
         elif format == "csv":
-            return pd.read_csv(cache_path)
+            # Load with index column and parse dates to preserve datetime index
+            return pd.read_csv(cache_path, index_col=0, parse_dates=True)
         else:
             raise ValueError(f"Unsupported format: {format}")
     except Exception as e:
