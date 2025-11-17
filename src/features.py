@@ -7,7 +7,14 @@ import warnings
 
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+
+# Try to import pandas_ta, but provide fallback if not available
+try:
+    import pandas_ta as ta
+    PANDAS_TA_AVAILABLE = True
+except ImportError:
+    PANDAS_TA_AVAILABLE = False
+    ta = None
 
 from .config import FEATURE_PARAMS
 from .utils import setup_logger, safe_division
@@ -15,6 +22,46 @@ from .utils import setup_logger, safe_division
 
 warnings.filterwarnings('ignore')
 logger = setup_logger(__name__)
+
+if not PANDAS_TA_AVAILABLE:
+    logger.warning("pandas_ta not available - using simplified technical indicators")
+
+
+# Fallback implementations for technical indicators when pandas_ta is not available
+def _calculate_rsi_fallback(series: pd.Series, period: int = 14) -> pd.Series:
+    """Simple RSI calculation"""
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+
+def _calculate_macd_fallback(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9) -> dict:
+    """Simple MACD calculation"""
+    exp1 = series.ewm(span=fast, adjust=False).mean()
+    exp2 = series.ewm(span=slow, adjust=False).mean()
+    macd = exp1 - exp2
+    signal_line = macd.ewm(span=signal, adjust=False).mean()
+    histogram = macd - signal_line
+    return {'macd': macd, 'signal': signal_line, 'histogram': histogram}
+
+
+def _calculate_atr_fallback(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> pd.Series:
+    """Simple ATR calculation"""
+    tr1 = high - low
+    tr2 = abs(high - close.shift())
+    tr3 = abs(low - close.shift())
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    atr = tr.rolling(window=period).mean()
+    return atr
+
+
+def _calculate_obv_fallback(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """Simple OBV calculation"""
+    obv = (np.sign(close.diff()) * volume).fillna(0).cumsum()
+    return obv
 
 
 class FeatureEngine:
@@ -70,7 +117,10 @@ class FeatureEngine:
         df['volatility_annual'] = df['volatility'] * np.sqrt(252)
 
         # ATR (Average True Range)
-        df['atr'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+        if PANDAS_TA_AVAILABLE:
+            df['atr'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
+        else:
+            df['atr'] = _calculate_atr_fallback(df['High'], df['Low'], df['Close'], period=14)
 
         return df
 
@@ -125,25 +175,40 @@ class FeatureEngine:
         df = data.copy()
 
         # RSI (Relative Strength Index)
-        df['rsi'] = ta.rsi(df['Close'], length=self.params['rsi_period'])
+        if PANDAS_TA_AVAILABLE:
+            df['rsi'] = ta.rsi(df['Close'], length=self.params['rsi_period'])
+        else:
+            df['rsi'] = _calculate_rsi_fallback(df['Close'], period=self.params['rsi_period'])
 
         # MACD
-        macd = ta.macd(
-            df['Close'],
-            fast=self.params['macd_fast'],
-            slow=self.params['macd_slow'],
-            signal=self.params['macd_signal']
-        )
-        if macd is not None:
-            df['macd'] = macd[f"MACD_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
-            df['macd_signal'] = macd[f"MACDs_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
-            df['macd_hist'] = macd[f"MACDh_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
+        if PANDAS_TA_AVAILABLE:
+            macd = ta.macd(
+                df['Close'],
+                fast=self.params['macd_fast'],
+                slow=self.params['macd_slow'],
+                signal=self.params['macd_signal']
+            )
+            if macd is not None:
+                df['macd'] = macd[f"MACD_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
+                df['macd_signal'] = macd[f"MACDs_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
+                df['macd_hist'] = macd[f"MACDh_{self.params['macd_fast']}_{self.params['macd_slow']}_{self.params['macd_signal']}"]
+        else:
+            macd_result = _calculate_macd_fallback(
+                df['Close'],
+                fast=self.params['macd_fast'],
+                slow=self.params['macd_slow'],
+                signal=self.params['macd_signal']
+            )
+            df['macd'] = macd_result['macd']
+            df['macd_signal'] = macd_result['signal']
+            df['macd_hist'] = macd_result['histogram']
 
-        # Stochastic Oscillator
-        stoch = ta.stoch(df['High'], df['Low'], df['Close'])
-        if stoch is not None:
-            df['stoch_k'] = stoch['STOCHk_14_3_3']
-            df['stoch_d'] = stoch['STOCHd_14_3_3']
+        # Stochastic Oscillator - skip if pandas_ta not available (complex calculation)
+        if PANDAS_TA_AVAILABLE:
+            stoch = ta.stoch(df['High'], df['Low'], df['Close'])
+            if stoch is not None:
+                df['stoch_k'] = stoch['STOCHk_14_3_3']
+                df['stoch_d'] = stoch['STOCHd_14_3_3']
 
         return df
 
@@ -167,7 +232,10 @@ class FeatureEngine:
         df['volume_ratio'] = safe_division(df['Volume'], df['avg_volume'], default=1.0)
 
         # On-Balance Volume (OBV)
-        df['obv'] = ta.obv(df['Close'], df['Volume'])
+        if PANDAS_TA_AVAILABLE:
+            df['obv'] = ta.obv(df['Close'], df['Volume'])
+        else:
+            df['obv'] = _calculate_obv_fallback(df['Close'], df['Volume'])
 
         # Volume-Weighted Average Price (VWAP) - for intraday, approximate with daily
         df['vwap'] = (df['Volume'] * (df['High'] + df['Low'] + df['Close']) / 3).cumsum() / df['Volume'].cumsum()
@@ -186,19 +254,30 @@ class FeatureEngine:
         """
         df = data.copy()
 
-        # ADX (Average Directional Index) - trend strength
-        adx = ta.adx(df['High'], df['Low'], df['Close'])
-        if adx is not None:
-            df['adx'] = adx['ADX_14']
-            df['di_plus'] = adx['DMP_14']
-            df['di_minus'] = adx['DMN_14']
+        # ADX (Average Directional Index) - skip if pandas_ta not available (complex calculation)
+        if PANDAS_TA_AVAILABLE:
+            adx = ta.adx(df['High'], df['Low'], df['Close'])
+            if adx is not None:
+                df['adx'] = adx['ADX_14']
+                df['di_plus'] = adx['DMP_14']
+                df['di_minus'] = adx['DMN_14']
 
         # Bollinger Bands
-        bbands = ta.bbands(df['Close'], length=20, std=2)
-        if bbands is not None:
-            df['bb_upper'] = bbands['BBU_20_2.0']
-            df['bb_middle'] = bbands['BBM_20_2.0']
-            df['bb_lower'] = bbands['BBL_20_2.0']
+        if PANDAS_TA_AVAILABLE:
+            bbands = ta.bbands(df['Close'], length=20, std=2)
+            if bbands is not None:
+                df['bb_upper'] = bbands['BBU_20_2.0']
+                df['bb_middle'] = bbands['BBM_20_2.0']
+                df['bb_lower'] = bbands['BBL_20_2.0']
+                df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+                df['bb_position'] = (df['Close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+        else:
+            # Simple Bollinger Bands calculation
+            period = 20
+            df['bb_middle'] = df['Close'].rolling(window=period).mean()
+            df['bb_std'] = df['Close'].rolling(window=period).std()
+            df['bb_upper'] = df['bb_middle'] + (df['bb_std'] * 2)
+            df['bb_lower'] = df['bb_middle'] - (df['bb_std'] * 2)
             df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
             df['bb_position'] = (df['Close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
 
