@@ -316,39 +316,45 @@ def render_stock_detail():
     if price_data is not None and not price_data.empty:
         st.markdown("#### Price History (1 Year)")
 
-        fig = go.Figure()
-        fig.add_trace(go.Candlestick(
-            x=price_data.index,
-            open=price_data['Open'],
-            high=price_data['High'],
-            low=price_data['Low'],
-            close=price_data['Close'],
-            name='Price'
-        ))
+        # Check if required columns exist
+        required_cols = ['Open', 'High', 'Low', 'Close']
+        if all(col in price_data.columns for col in required_cols):
+            fig = go.Figure()
+            fig.add_trace(go.Candlestick(
+                x=price_data.index,
+                open=price_data['Open'],
+                high=price_data['High'],
+                low=price_data['Low'],
+                close=price_data['Close'],
+                name='Price'
+            ))
 
-        # Add moving averages
-        fig.add_trace(go.Scatter(
-            x=price_data.index,
-            y=price_data['Close'].rolling(20).mean(),
-            name='20-day MA',
-            line=dict(color='orange', width=1)
-        ))
+            # Add moving averages
+            fig.add_trace(go.Scatter(
+                x=price_data.index,
+                y=price_data['Close'].rolling(20).mean(),
+                name='20-day MA',
+                line=dict(color='orange', width=1)
+            ))
 
-        fig.add_trace(go.Scatter(
-            x=price_data.index,
-            y=price_data['Close'].rolling(50).mean(),
-            name='50-day MA',
-            line=dict(color='blue', width=1)
-        ))
+            fig.add_trace(go.Scatter(
+                x=price_data.index,
+                y=price_data['Close'].rolling(50).mean(),
+                name='50-day MA',
+                line=dict(color='blue', width=1)
+            ))
 
-        fig.update_layout(
-            title=f"{selected_ticker} Price Chart",
-            yaxis_title="Price ($)",
-            xaxis_title="Date",
-            height=500
-        )
+            fig.update_layout(
+                title=f"{selected_ticker} Price Chart",
+                yaxis_title="Price ($)",
+                xaxis_title="Date",
+                height=500
+            )
 
-        st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.error(f"Price data columns missing. Found: {list(price_data.columns)}")
+            logger.error(f"Missing OHLC columns for {selected_ticker}. Columns: {list(price_data.columns)}")
 
 
 def render_backtest():
