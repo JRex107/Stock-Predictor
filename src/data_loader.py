@@ -71,6 +71,18 @@ class DataLoader:
             data = load_cache(cache_path, format="csv")
             if data is not None and not data.empty:
                 data.index = pd.to_datetime(data.index)
+                # Ensure column names are capitalized (yfinance standard format)
+                # Handle both lowercase and capitalized versions
+                column_mapping = {}
+                for col in data.columns:
+                    col_lower = col.lower()
+                    if col_lower in ['open', 'high', 'low', 'close', 'volume', 'dividends', 'stock splits']:
+                        if col_lower == 'stock splits':
+                            column_mapping[col] = 'Stock Splits'
+                        else:
+                            column_mapping[col] = col_lower.capitalize()
+                if column_mapping:
+                    data = data.rename(columns=column_mapping)
                 return data
 
         # Fetch fresh data
