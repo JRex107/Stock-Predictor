@@ -77,7 +77,11 @@ def save_cache(data: Any, cache_path: Path, format: str = "pickle") -> None:
             json.dump(data, f, indent=2)
     elif format == "csv" and isinstance(data, pd.DataFrame):
         # Save with index to preserve datetime index for stock price data
-        data.to_csv(cache_path, index=True)
+        # Remove timezone info to avoid issues with CSV serialization
+        data_to_save = data.copy()
+        if isinstance(data_to_save.index, pd.DatetimeIndex) and data_to_save.index.tz is not None:
+            data_to_save.index = data_to_save.index.tz_localize(None)
+        data_to_save.to_csv(cache_path, index=True)
     else:
         raise ValueError(f"Unsupported format: {format}")
 

@@ -80,7 +80,23 @@ class ConstituentsManager:
 
             # Handle multi-level columns if present
             if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(-1)
+                # Try different levels to find the one with proper column names
+                for level in range(df.columns.nlevels):
+                    test_cols = df.columns.get_level_values(level)
+                    # Check if this level has string column names (not just numbers)
+                    if any(isinstance(col, str) and len(str(col)) > 1 for col in test_cols):
+                        df.columns = test_cols
+                        logger.info(f"Using MultiIndex level {level} for column names")
+                        break
+                else:
+                    # If all levels are numeric or empty, flatten to last level
+                    df.columns = df.columns.get_level_values(-1)
+
+            # If columns are still numeric, try using first row as headers
+            if all(isinstance(col, (int, float)) for col in df.columns):
+                logger.warning("Columns are numeric, attempting to use first row as headers")
+                df.columns = df.iloc[0]
+                df = df[1:].reset_index(drop=True)
 
             logger.info(f"S&P 500 table columns: {list(df.columns)}")
 
@@ -111,6 +127,9 @@ class ConstituentsManager:
             result['Sector'] = df[sector_col] if sector_col else ''
             result['Industry'] = df[industry_col] if industry_col else ''
             result['Index'] = 'S&P 500'
+
+            # Clean up ticker symbols (remove any whitespace)
+            result['Ticker'] = result['Ticker'].astype(str).str.strip()
 
             save_cache(result, cache_path, format="csv")
             logger.info(f"Fetched {len(result)} S&P 500 constituents")
@@ -154,7 +173,19 @@ class ConstituentsManager:
                     temp_df = tables[table_idx]
                     # Handle multi-level columns if present
                     if isinstance(temp_df.columns, pd.MultiIndex):
-                        temp_df.columns = temp_df.columns.get_level_values(-1)
+                        # Try different levels to find the one with proper column names
+                        for level in range(temp_df.columns.nlevels):
+                            test_cols = temp_df.columns.get_level_values(level)
+                            if any(isinstance(col, str) and len(str(col)) > 1 for col in test_cols):
+                                temp_df.columns = test_cols
+                                break
+                        else:
+                            temp_df.columns = temp_df.columns.get_level_values(-1)
+
+                    # If columns are numeric, try using first row as headers
+                    if all(isinstance(col, (int, float)) for col in temp_df.columns):
+                        temp_df.columns = temp_df.iloc[0]
+                        temp_df = temp_df[1:].reset_index(drop=True)
 
                     # Check if this looks like a constituents table (has ticker/company column)
                     col_str = ' '.join(str(col).lower() for col in temp_df.columns)
@@ -195,6 +226,9 @@ class ConstituentsManager:
             result['Sector'] = df[sector_col] if sector_col else 'Technology'  # Default for NASDAQ
             result['Industry'] = df[industry_col] if industry_col else ''
             result['Index'] = 'NASDAQ-100'
+
+            # Clean up ticker symbols
+            result['Ticker'] = result['Ticker'].astype(str).str.strip()
 
             save_cache(result, cache_path, format="csv")
             logger.info(f"Fetched {len(result)} NASDAQ-100 constituents")
@@ -238,7 +272,19 @@ class ConstituentsManager:
                     temp_df = tables[table_idx]
                     # Handle multi-level columns if present
                     if isinstance(temp_df.columns, pd.MultiIndex):
-                        temp_df.columns = temp_df.columns.get_level_values(-1)
+                        # Try different levels to find the one with proper column names
+                        for level in range(temp_df.columns.nlevels):
+                            test_cols = temp_df.columns.get_level_values(level)
+                            if any(isinstance(col, str) and len(str(col)) > 1 for col in test_cols):
+                                temp_df.columns = test_cols
+                                break
+                        else:
+                            temp_df.columns = temp_df.columns.get_level_values(-1)
+
+                    # If columns are numeric, try using first row as headers
+                    if all(isinstance(col, (int, float)) for col in temp_df.columns):
+                        temp_df.columns = temp_df.iloc[0]
+                        temp_df = temp_df[1:].reset_index(drop=True)
 
                     # Check if this looks like a constituents table
                     if len(temp_df) > 50:  # FTSE 100 should have ~100 rows
@@ -274,7 +320,7 @@ class ConstituentsManager:
             result = pd.DataFrame()
 
             # Add .L suffix for London Stock Exchange tickers
-            tickers = df[ticker_col].astype(str)
+            tickers = df[ticker_col].astype(str).str.strip()
             # Only add .L if not already present
             result['Ticker'] = tickers.apply(lambda x: x if x.endswith('.L') else f"{x}.L")
 
@@ -325,7 +371,19 @@ class ConstituentsManager:
                     temp_df = tables[table_idx]
                     # Handle multi-level columns if present
                     if isinstance(temp_df.columns, pd.MultiIndex):
-                        temp_df.columns = temp_df.columns.get_level_values(-1)
+                        # Try different levels to find the one with proper column names
+                        for level in range(temp_df.columns.nlevels):
+                            test_cols = temp_df.columns.get_level_values(level)
+                            if any(isinstance(col, str) and len(str(col)) > 1 for col in test_cols):
+                                temp_df.columns = test_cols
+                                break
+                        else:
+                            temp_df.columns = temp_df.columns.get_level_values(-1)
+
+                    # If columns are numeric, try using first row as headers
+                    if all(isinstance(col, (int, float)) for col in temp_df.columns):
+                        temp_df.columns = temp_df.iloc[0]
+                        temp_df = temp_df[1:].reset_index(drop=True)
 
                     # Check if this looks like a constituents table
                     if len(temp_df) > 100:  # FTSE 250 should have ~250 rows
@@ -361,7 +419,7 @@ class ConstituentsManager:
             result = pd.DataFrame()
 
             # Add .L suffix for London Stock Exchange tickers
-            tickers = df[ticker_col].astype(str)
+            tickers = df[ticker_col].astype(str).str.strip()
             # Only add .L if not already present
             result['Ticker'] = tickers.apply(lambda x: x if x.endswith('.L') else f"{x}.L")
 
@@ -438,6 +496,15 @@ class ConstituentsManager:
         """
         if constituents.empty:
             return constituents
+
+        # Validate required columns exist
+        if 'Ticker' not in constituents.columns:
+            logger.error(f"Constituents DataFrame missing 'Ticker' column. Columns: {list(constituents.columns)}")
+            return pd.DataFrame()
+
+        if 'Index' not in constituents.columns:
+            logger.error(f"Constituents DataFrame missing 'Index' column. Columns: {list(constituents.columns)}")
+            return pd.DataFrame()
 
         logger.info(f"Filtering to top {top_n} stocks per index by market cap")
 

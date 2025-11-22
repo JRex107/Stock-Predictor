@@ -96,6 +96,10 @@ class DataLoader:
             data = retry_with_backoff(fetch, max_retries=3)
 
             if data is not None and not data.empty:
+                # Remove timezone info to avoid serialization issues
+                if isinstance(data.index, pd.DatetimeIndex) and data.index.tz is not None:
+                    data.index = data.index.tz_localize(None)
+
                 # Save to cache
                 save_cache(data, cache_path, format="csv")
                 return data

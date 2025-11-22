@@ -357,14 +357,13 @@ def render_stock_detail():
             logger.error(f"Missing OHLC columns for {selected_ticker}. Columns: {list(price_data.columns)}")
 
 
-def render_backtest():
+def render_backtest(config: dict):
     """Render backtest section"""
     st.markdown('<div class="sub-header">📈 Backtest Results</div>', unsafe_allow_html=True)
 
     if st.button("Run Backtest", type="primary"):
         with st.spinner("Running backtest... This may take several minutes..."):
             try:
-                config = render_sidebar()
                 backtester = create_backtester(
                     risk_profile=config['risk_profile'],
                     portfolio_size=20
@@ -543,7 +542,7 @@ def main():
         render_stock_detail()
 
     with tab4:
-        render_backtest()
+        render_backtest(config)
 
     # Footer
     st.markdown("---")
