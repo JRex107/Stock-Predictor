@@ -263,15 +263,23 @@ class FeatureEngine:
                 df['di_minus'] = adx['DMN_14']
 
         # Bollinger Bands
+        bb_calculated = False
         if PANDAS_TA_AVAILABLE:
-            bbands = ta.bbands(df['Close'], length=20, std=2)
-            if bbands is not None:
-                df['bb_upper'] = bbands['BBU_20_2.0']
-                df['bb_middle'] = bbands['BBM_20_2.0']
-                df['bb_lower'] = bbands['BBL_20_2.0']
-                df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
-                df['bb_position'] = (df['Close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
-        else:
+            try:
+                bbands = ta.bbands(df['Close'], length=20, std=2)
+                if bbands is not None and not bbands.empty:
+                    # Check if expected columns exist
+                    if 'BBU_20_2.0' in bbands.columns:
+                        df['bb_upper'] = bbands['BBU_20_2.0']
+                        df['bb_middle'] = bbands['BBM_20_2.0']
+                        df['bb_lower'] = bbands['BBL_20_2.0']
+                        df['bb_width'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+                        df['bb_position'] = (df['Close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+                        bb_calculated = True
+            except Exception as e:
+                logger.warning(f"pandas_ta bbands failed: {e}, using fallback calculation")
+
+        if not bb_calculated:
             # Simple Bollinger Bands calculation
             period = 20
             df['bb_middle'] = df['Close'].rolling(window=period).mean()
