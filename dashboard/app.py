@@ -140,12 +140,15 @@ def render_sidebar():
     # Sentiment analysis
     use_sentiment = st.sidebar.checkbox(
         "Use news sentiment analysis",
-        value=bool(NEWSAPI_KEY),
-        disabled=not bool(NEWSAPI_KEY)
+        value=False,  # Disabled by default to avoid API rate limits
+        disabled=not bool(NEWSAPI_KEY),
+        help="Enable to fetch news sentiment. Limited to 100 API calls per day on free tier."
     )
 
     if not NEWSAPI_KEY:
         st.sidebar.warning("⚠️ No NewsAPI key configured. Sentiment analysis disabled.")
+    elif use_sentiment:
+        st.sidebar.info("📰 Sentiment analysis enabled. Uses NewsAPI quota.")
 
     # Existing portfolio
     st.sidebar.markdown("### Analyze Specific Stocks (Optional)")
@@ -202,7 +205,7 @@ def render_overview(analysis_df: pd.DataFrame, config: dict):
         title="Distribution of Stock Scores",
         labels={'score': 'Score', 'count': 'Number of Stocks'}
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
     # Sector distribution
     if 'sector' in analysis_df.columns:
@@ -214,7 +217,7 @@ def render_overview(analysis_df: pd.DataFrame, config: dict):
             labels={'x': 'Sector', 'y': 'Count'},
             title="Stock Count by Sector"
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def render_recommendations(recommendations: dict, config: dict):
@@ -259,7 +262,7 @@ def render_recommendation_table(df: pd.DataFrame, rec_type: str):
 
     display_df.columns = ['Ticker', 'Name', 'Sector', 'Score', 'Action', 'Price', '1M Return', 'Sentiment']
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(display_df, width='stretch', hide_index=True)
 
     # Expandable explanations
     with st.expander("📄 View Detailed Explanations"):
@@ -351,7 +354,7 @@ def render_stock_detail():
                 height=500
             )
 
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.error(f"Price data columns missing. Found: {list(price_data.columns)}")
             logger.error(f"Missing OHLC columns for {selected_ticker}. Columns: {list(price_data.columns)}")
@@ -438,7 +441,7 @@ def render_backtest(config: dict):
             height=500
         )
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
         # Returns distribution
         st.markdown("#### Returns Distribution")
@@ -448,7 +451,7 @@ def render_backtest(config: dict):
             title="Distribution of Daily Returns",
             labels={'value': 'Daily Return', 'count': 'Frequency'}
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 
 def main():
@@ -469,7 +472,7 @@ def main():
     # Main actions
     col1, col2 = st.columns([1, 4])
     with col1:
-        if st.button("🚀 Run Analysis", type="primary", use_container_width=True):
+        if st.button("🚀 Run Analysis", type="primary", width='stretch'):
             if not config['indices']:
                 st.error("Please select at least one index")
                 return

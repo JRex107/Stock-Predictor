@@ -95,8 +95,18 @@ class ConstituentsManager:
             # If columns are still numeric, try using first row as headers
             if all(isinstance(col, (int, float)) for col in df.columns):
                 logger.warning("Columns are numeric, attempting to use first row as headers")
-                df.columns = df.iloc[0]
-                df = df[1:].reset_index(drop=True)
+                # Find first row that looks like headers (short strings, not notices)
+                for idx in range(min(5, len(df))):  # Check first 5 rows
+                    potential_headers = df.iloc[idx]
+                    # Check if this row looks like headers (all strings, reasonably short)
+                    if all(isinstance(val, str) and len(str(val)) < 100 for val in potential_headers):
+                        df.columns = potential_headers
+                        df = df[idx+1:].reset_index(drop=True)
+                        logger.info(f"Used row {idx} as headers")
+                        break
+                else:
+                    # Couldn't find good headers, use generic names
+                    df.columns = [f"col_{i}" for i in range(len(df.columns))]
 
             logger.info(f"S&P 500 table columns: {list(df.columns)}")
 
@@ -267,7 +277,9 @@ class ConstituentsManager:
 
             # Try different table indices to find the constituents table
             df = None
-            for table_idx in [2, 3, 4]:
+            logger.info(f"Found {len(tables)} tables on FTSE 100 Wikipedia page")
+
+            for table_idx in range(len(tables)):  # Try all tables
                 if table_idx < len(tables):
                     temp_df = tables[table_idx]
                     # Handle multi-level columns if present
@@ -283,18 +295,25 @@ class ConstituentsManager:
 
                     # If columns are numeric, try using first row as headers
                     if all(isinstance(col, (int, float)) for col in temp_df.columns):
-                        temp_df.columns = temp_df.iloc[0]
-                        temp_df = temp_df[1:].reset_index(drop=True)
+                        # Find first row that looks like headers
+                        for idx in range(min(5, len(temp_df))):
+                            potential_headers = temp_df.iloc[idx]
+                            if all(isinstance(val, str) and len(str(val)) < 100 for val in potential_headers):
+                                temp_df.columns = potential_headers
+                                temp_df = temp_df[idx+1:].reset_index(drop=True)
+                                break
 
-                    # Check if this looks like a constituents table
-                    if len(temp_df) > 50:  # FTSE 100 should have ~100 rows
+                    # Check if this looks like a constituents table (relaxed criteria)
+                    if len(temp_df) > 30:  # Lower threshold - at least 30 rows
                         col_str = ' '.join(str(col).lower() for col in temp_df.columns)
-                        if ('ticker' in col_str or 'epic' in col_str) and ('company' in col_str or 'name' in col_str):
+                        logger.debug(f"Table {table_idx}: {len(temp_df)} rows, columns: {list(temp_df.columns)[:3]}")
+                        if ('ticker' in col_str or 'epic' in col_str or 'symbol' in col_str):
                             df = temp_df
-                            logger.info(f"Found FTSE 100 constituents in table {table_idx}")
+                            logger.info(f"Found FTSE 100 constituents in table {table_idx} ({len(temp_df)} rows)")
                             break
 
             if df is None:
+                logger.error(f"Could not find FTSE 100 constituents table among {len(tables)} tables")
                 raise ValueError("Could not find FTSE 100 constituents table")
 
             logger.info(f"FTSE 100 table columns: {list(df.columns)}")
